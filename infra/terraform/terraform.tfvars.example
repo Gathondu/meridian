@@ -25,6 +25,9 @@ request_id_header  = "X-Request-ID"
 openai_model    = "gpt-4o-mini"
 openai_base_url = ""
 
+# GitHub deploy: set optional repo Variables TF_VAR_openai_model / TF_VAR_openai_base_url,
+# or Secrets OPENAI_MODEL / OPENAI_BASE_URL (same names as backend OPENAI_* env; secrets win).
+
 # Leave empty locally if you do not want Secrets Manager / App Runner injection.
-# In CI, set TF_VAR_openai_api_key from a GitHub Actions secret.
+# In CI, set OPENAI_API_KEY from a GitHub Actions secret (maps to TF_VAR_openai_api_key).
 # openai_api_key = "sk-..."

@@ -24,8 +24,6 @@ env:
   TF_VAR_log_json: ${{ vars.TF_VAR_log_json || 'true' }}
   TF_VAR_rate_limit_default: ${{ vars.TF_VAR_rate_limit_default || '120/minute' }}
   TF_VAR_request_id_header: ${{ vars.TF_VAR_request_id_header || 'X-Request-ID' }}
-  TF_VAR_openai_model: ${{ vars.TF_VAR_openai_model || 'gpt-4o-mini' }}
-  TF_VAR_openai_base_url: ${{ vars.TF_VAR_openai_base_url || '' }}
   TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
 
 jobs:
@@ -38,6 +36,22 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      # OPENAI_MODEL / OPENAI_BASE_URL: optional secrets (same names as backend env) override repo variables.
+      - name: Set OpenAI Terraform variables
+        env:
+          S_MODEL: ${{ secrets.OPENAI_MODEL }}
+          V_MODEL: ${{ vars.TF_VAR_openai_model }}
+          S_BASE: ${{ secrets.OPENAI_BASE_URL }}
+          V_BASE: ${{ vars.TF_VAR_openai_base_url }}
+        run: |
+          if [ -n "$S_MODEL" ]; then echo "TF_VAR_openai_model=$S_MODEL" >> "$GITHUB_ENV"
+          elif [ -n "$V_MODEL" ]; then echo "TF_VAR_openai_model=$V_MODEL" >> "$GITHUB_ENV"
+          else echo "TF_VAR_openai_model=gpt-4o-mini" >> "$GITHUB_ENV"
+          fi
+          if [ -n "$S_BASE" ]; then echo "TF_VAR_openai_base_url=$S_BASE" >> "$GITHUB_ENV"
+          elif [ -n "$V_BASE" ]; then echo "TF_VAR_openai_base_url=$V_BASE" >> "$GITHUB_ENV"
+          fi
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
