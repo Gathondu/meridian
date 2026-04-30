@@ -1,0 +1,19 @@
+[project]
+name = "meridian-api"
+version = "0.1.0"
+description = "Meridian FastAPI backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.6,<0.117",
+    "uvicorn[standard]>=0.34.0,<0.36",
+]
+
+[build-system]
+requires = ["hatchling>=1.26.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+only-include = ["main.py"]
+
+[tool.fastapi]
+entrypoint = "main:app"

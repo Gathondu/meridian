@@ -1,0 +1,7 @@
+.root {
+	min-height: 100vh;
+	margin: 0;
+	font-family: var(--font-sans, system-ui, sans-serif);
+	background: var(--color-bg, #fff);
+	color: var(--color-text, #111);
+}
