@@ -1,6 +1,16 @@
-import { env } from '$env/dynamic/private';
 import { error } from '@sveltejs/kit';
-import type { PageServerLoad } from './$types';
+import type { PageLoad } from './$types';
+
+export const prerender = false;
+
+function apiBaseUrl(): string {
+	const raw =
+		typeof import.meta.env.PUBLIC_MERIDIAN_API_BASE_URL === 'string'
+			? import.meta.env.PUBLIC_MERIDIAN_API_BASE_URL.trim()
+			: '';
+	const base = raw.replace(/\/$/, '');
+	return base || 'http://127.0.0.1:8000';
+}
 
 async function fetchJson(url: string): Promise<unknown> {
 	const res = await fetch(url, { headers: { Accept: 'application/json' } });
@@ -11,8 +21,8 @@ async function fetchJson(url: string): Promise<unknown> {
 	return res.json() as Promise<unknown>;
 }
 
-export const load: PageServerLoad = async () => {
-	const base = env.MERIDIAN_API_BASE_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:8000';
+export const load: PageLoad = async () => {
+	const base = apiBaseUrl();
 
 	try {
 		const [tools, resources, prompts, templates] = await Promise.all([

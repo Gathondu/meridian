@@ -1,12 +1,18 @@
-"""Read-only MCP client wrapper (FastMCP + Streamable HTTP)."""
+"""MCP client wrapper (FastMCP + Streamable HTTP)."""
 
+import json
 import logging
+from typing import Any
+
 import mcp.types
 from fastmcp import Client
 from fastmcp.client.transports import StreamableHttpTransport
+from fastmcp.exceptions import ToolError
 from mcp import McpError
 
 from meridian_api.core.settings import Settings
+from meridian_api.services.mcp_text_parsers import structured_from_call_tool_result
+
 from meridian_api.schemas.mcp_inspection import (
     PromptPublic,
     PromptsListResponse,
@@ -26,7 +32,7 @@ _MAX_URI_LEN = 4096
 
 
 class McpGatewayService:
-    """Per-request MCP sessions for inspection (no ``call_tool``)."""
+    """Per-request MCP sessions (inspection + ``call_tool`` for chat)."""
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -138,3 +144,35 @@ class McpGatewayService:
             uri=validated,
             contents=self._map_resource_contents(blocks),
         )
+
+    async def call_tool(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        """Invoke a single MCP tool and return structured JSON payload."""
+        try:
+            async with self._client(request_id) as client:
+                result = await client.call_tool(name, arguments)
+        except ToolError as exc:
+            logger.warning("MCP call_tool %s tool error: %s", name, exc)
+            return {"result": str(exc), "mcp_is_error": True}
+        except McpError as exc:
+            logger.warning("MCP call_tool %s failed: %s", name, exc)
+            raise
+        payload = structured_from_call_tool_result(result)
+        if getattr(result, "is_error", False):
+            logger.warning("MCP tool %s returned is_error=True", name)
+            payload = {**payload, "mcp_is_error": True}
+        return payload
+
+    async def call_tool_text(
+        self,
+        name: str,
+        arguments: dict[str, Any],
+        request_id: str | None,
+    ) -> str:
+        """Invoke tool and return a string suitable for OpenAI ``tool`` message content."""
+        payload = await self.call_tool(name, arguments, request_id)
+        return json.dumps(payload, ensure_ascii=False)

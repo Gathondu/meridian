@@ -40,6 +40,10 @@ terraform.rc
 *.tfvars
 *.tfvars.json
 
+# Chat session files (local JSON)
+backend/data/chat_sessions/
+data/chat_sessions/
+
 # OS / IDE
 .DS_Store
 Thumbs.db

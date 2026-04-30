@@ -7,5 +7,7 @@
 	<p class={styles.lead}>Frontend shell.</p>
 	<p class={styles.lead}>
 		<a class={styles.link} href="/mcp">MCP inspection</a>
+		·
+		<a class={styles.link} href="/chat">Chat (SSE)</a>
 	</p>
 </main>

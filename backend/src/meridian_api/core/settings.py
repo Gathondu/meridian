@@ -3,7 +3,9 @@
 from functools import lru_cache
 from typing import Annotated
 
-from pydantic import AnyHttpUrl, BeforeValidator, Field
+from pathlib import Path
+
+from pydantic import AnyHttpUrl, BeforeValidator, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -107,6 +109,34 @@ class Settings(BaseSettings):
         description="Header used for request correlation (inbound and outbound to MCP).",
     )
 
+    openai_api_key: SecretStr | None = Field(
+        default=None,
+        description="OpenAI API key for chat completions (SSE). If unset, chat endpoints return 503.",
+    )
+    openai_model: str = Field(
+        default="gpt-4o-mini",
+        description="Chat completions model for the assistant.",
+    )
+    openai_base_url: str | None = Field(
+        default=None,
+        description=(
+            "Optional OpenAI-compatible API base URL "
+            "(e.g. https://openrouter.ai/api/v1). Omit to use the default OpenAI endpoint."
+        ),
+    )
+    chat_sessions_dir: str = Field(
+        default="data/chat_sessions",
+        description="Directory for JSON chat session files (created on demand).",
+    )
+    chat_sessions_s3_bucket: str | None = Field(
+        default=None,
+        description="When set, store chat session JSON in this S3 bucket instead of ``CHAT_SESSIONS_DIR``.",
+    )
+    chat_sessions_s3_prefix: str = Field(
+        default="sessions",
+        description="Object key prefix under the chat sessions bucket (no leading slash).",
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:
@@ -117,3 +147,9 @@ def get_settings() -> Settings:
 def cors_origins_list(settings: Settings) -> list[str]:
     """Parse ``Settings.cors_origins`` into a list for Starlette CORS."""
     return _parse_csv_or_json_list(settings.cors_origins)
+
+
+def chat_sessions_path(settings: Settings) -> Path:
+    """Absolute path to the chat session storage directory."""
+    p = Path(settings.chat_sessions_dir)
+    return p if p.is_absolute() else Path.cwd() / p

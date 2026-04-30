@@ -4,8 +4,10 @@ version = "0.1.0"
 description = "Meridian FastAPI backend"
 requires-python = ">=3.12"
 dependencies = [
+    "boto3>=1.35.0,<2",
     "fastapi>=0.115.6,<0.117",
     "fastmcp>=3.2.4",
+    "openai>=1.59.0,<2",
     "pydantic-settings>=2.14.0",
     "slowapi>=0.1.9",
     "uvicorn[standard]>=0.34.0,<0.36",
