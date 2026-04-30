@@ -18,7 +18,7 @@ resource "aws_apprunner_service" "api" {
         runtime_environment_variables = merge(
           {
             MCP_SERVER_URL            = var.mcp_server_url
-            MCP_SERVER_HEADERS        = var.mcp_server_headers_json
+            MCP_SERVER_HEADERS        = local.mcp_server_headers_effective
             CORS_ORIGINS              = local.cors_for_app
             LOG_LEVEL                 = var.log_level
             LOG_JSON                  = tostring(var.log_json)

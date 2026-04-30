@@ -1,0 +1,104 @@
+name: Deploy to AWS
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'eu-central-1' }}
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TF_VAR_aws_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
+  TF_VAR_project_name: ${{ vars.TF_VAR_project_name || 'meridian' }}
+  TF_VAR_github_repository: ${{ github.repository }}
+  TF_VAR_mcp_server_url: ${{ secrets.MCP_SERVER_URL }}
+  TF_VAR_mcp_server_headers_json: ${{ secrets.MCP_SERVER_HEADERS_JSON }}
+  TF_VAR_cors_origins_extra: ${{ vars.TF_VAR_cors_origins_extra }}
+  TF_VAR_log_level: ${{ vars.TF_VAR_log_level || 'INFO' }}
+  TF_VAR_log_json: ${{ vars.TF_VAR_log_json || 'true' }}
+  TF_VAR_rate_limit_default: ${{ vars.TF_VAR_rate_limit_default || '120/minute' }}
+  TF_VAR_request_id_header: ${{ vars.TF_VAR_request_id_header || 'X-Request-ID' }}
+  TF_VAR_openai_model: ${{ vars.TF_VAR_openai_model || 'gpt-4o-mini' }}
+  TF_VAR_openai_base_url: ${{ vars.TF_VAR_openai_base_url || '' }}
+  TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.0"
+
+      - name: Terraform init
+        run: terraform init
+
+      - name: Terraform apply (ECR only, first pass)
+        run: terraform apply -auto-approve -target=aws_ecr_repository.api
+
+      - name: Login to Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          set -eux
+          REPO_URL="$(terraform output -raw ecr_repository_url)"
+          docker build -f "${GITHUB_WORKSPACE}/docker/Dockerfile.backend" -t "${REPO_URL}:${IMAGE_TAG}" -t "${REPO_URL}:latest" "${GITHUB_WORKSPACE}"
+          docker push "${REPO_URL}:${IMAGE_TAG}"
+          docker push "${REPO_URL}:latest"
+
+      - name: Terraform apply (full stack)
+        run: terraform apply -auto-approve
+
+      - name: Terraform outputs
+        id: tfout
+        run: |
+          echo "api_url=$(terraform output -raw app_runner_service_url)" >> "$GITHUB_OUTPUT"
+          echo "cf_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
+          echo "web_bucket=$(terraform output -raw frontend_bucket_id)" >> "$GITHUB_OUTPUT"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Build static frontend
+        working-directory: frontend
+        env:
+          PUBLIC_MERIDIAN_API_BASE_URL: ${{ steps.tfout.outputs.api_url }}
+        run: |
+          npm ci
+          npm run build
+
+      - name: Sync frontend to S3
+        run: |
+          aws s3 sync "${GITHUB_WORKSPACE}/frontend/build" "s3://${{ steps.tfout.outputs.web_bucket }}/" --delete
+
+      - name: Invalidate CloudFront
+        run: |
+          aws cloudfront create-invalidation --distribution-id "${{ steps.tfout.outputs.cf_id }}" --paths "/*"

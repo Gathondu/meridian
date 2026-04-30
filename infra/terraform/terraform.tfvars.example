@@ -1,0 +1,30 @@
+# Copy to `terraform.tfvars` (gitignored) or export equivalent TF_VAR_* for CI.
+# Aligns with backend/.env.example and GitHub Actions env mapping in deploy-aws.yml.
+
+aws_region   = "eu-central-1"
+project_name = "meridian"
+
+# Required for GitHub OIDC deploy role trust (format: owner/repo).
+github_repository = "your-org/meridian"
+
+# --- API runtime (see backend/.env.example) ---
+
+mcp_server_url = "https://your-mcp-host.example/mcp"
+
+# Optional JSON object string, e.g. {"Authorization":"Bearer token"}
+mcp_server_headers_json = "{}"
+
+# Optional extra CORS origins in addition to the CloudFront URL (comma-separated).
+cors_origins_extra = "http://localhost:5173,http://127.0.0.1:5173"
+
+log_level          = "INFO"
+log_json           = true
+rate_limit_default = "120/minute"
+request_id_header  = "X-Request-ID"
+
+openai_model    = "gpt-4o-mini"
+openai_base_url = ""
+
+# Leave empty locally if you do not want Secrets Manager / App Runner injection.
+# In CI, set TF_VAR_openai_api_key from a GitHub Actions secret.
+# openai_api_key = "sk-..."

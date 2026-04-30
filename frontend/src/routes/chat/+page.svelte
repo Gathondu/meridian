@@ -1,10 +1,11 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import styles from './+page.module.css';
-	import { consumeChatSse } from './chat.functions';
+	import { consumeChatSse, createPendingChatSession } from './chat.functions';
 
 	let { data }: { data: PageData } = $props();
 
+	let sessionId = $state('');
 	let message = $state('');
 	let transcript = $state('');
 	let streaming = $state('');
@@ -21,8 +22,11 @@
 		message = '';
 		busy = true;
 		try {
+			if (!sessionId) {
+				sessionId = await createPendingChatSession(data.baseUrl);
+			}
 			const res = await fetch(
-				`${data.baseUrl}/api/chat/sessions/${encodeURIComponent(data.sessionId)}/messages`,
+				`${data.baseUrl}/api/chat/sessions/${encodeURIComponent(sessionId)}/messages`,
 				{
 					method: 'POST',
 					headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
