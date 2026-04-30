@@ -5,6 +5,9 @@ description = "Meridian FastAPI backend"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.6,<0.117",
+    "fastmcp>=3.2.4",
+    "pydantic-settings>=2.14.0",
+    "slowapi>=0.1.9",
     "uvicorn[standard]>=0.34.0,<0.36",
 ]
 
@@ -13,7 +16,17 @@ requires = ["hatchling>=1.26.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-only-include = ["main.py"]
+packages = ["src/meridian_api"]
 
 [tool.fastapi]
-entrypoint = "main:app"
+entrypoint = "meridian_api.main:app"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.0.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
