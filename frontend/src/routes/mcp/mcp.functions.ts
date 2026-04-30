@@ -2,7 +2,6 @@
 
 export type ToolRow = {
 	name: string;
-	title?: string | null;
 	description?: string | null;
 };
 
@@ -33,7 +32,6 @@ export function toolsFromPayload(data: unknown): ToolRow[] {
 	if (!Array.isArray(tools)) return [];
 	return tools.map((t) => ({
 		name: String((t as { name?: unknown }).name ?? ''),
-		title: (t as { title?: string | null }).title ?? null,
 		description: (t as { description?: string | null }).description ?? null
 	}));
 }

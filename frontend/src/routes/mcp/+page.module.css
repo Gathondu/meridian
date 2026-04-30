@@ -48,6 +48,27 @@
 	word-break: break-all;
 }
 
+/* Tools: keep identifier on one line within the column (ellipsis if needed). */
+.toolsTable {
+	table-layout: fixed;
+}
+
+.toolNameTh,
+.toolNameTd {
+	width: 22%;
+	max-width: min(18rem, 30vw);
+	overflow: hidden;
+}
+
+.toolNameCode {
+	display: block;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	word-break: normal;
+	overflow-wrap: normal;
+}
+
 .back {
 	display: inline-block;
 	margin-bottom: var(--space-lg, 1rem);

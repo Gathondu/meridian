@@ -23,19 +23,19 @@
 
 	<section class={styles.section} aria-labelledby="tools-h">
 		<h2 id="tools-h" class={styles.sectionTitle}>Tools</h2>
-		<table class={styles.table}>
+		<table class="{styles.table} {styles.toolsTable}">
 			<thead>
 				<tr>
-					<th class={styles.th}>Name</th>
-					<th class={styles.th}>Title</th>
+					<th class="{styles.th} {styles.toolNameTh}">Name</th>
 					<th class={styles.th}>Description</th>
 				</tr>
 			</thead>
 			<tbody>
 				{#each toolRows as row (row.name)}
 					<tr>
-						<td class={styles.td}><code class={styles.mono}>{row.name}</code></td>
-						<td class={styles.td}>{row.title ?? '—'}</td>
+						<td class="{styles.td} {styles.toolNameTd}">
+							<code class="{styles.mono} {styles.toolNameCode}" title={row.name}>{row.name}</code>
+						</td>
 						<td class={styles.td}>{row.description ?? '—'}</td>
 					</tr>
 				{/each}
