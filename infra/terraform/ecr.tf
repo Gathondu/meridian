@@ -23,3 +23,23 @@ resource "aws_ecr_lifecycle_policy" "api" {
     }]
   })
 }
+
+data "aws_iam_policy_document" "api_ecr_repository" {
+  statement {
+    sid    = "LambdaECRImageRetrievalPolicy"
+    effect = "Allow"
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+    actions = [
+      "ecr:BatchGetImage",
+      "ecr:GetDownloadUrlForLayer",
+    ]
+  }
+}
+
+resource "aws_ecr_repository_policy" "api_lambda" {
+  repository = aws_ecr_repository.api.name
+  policy     = data.aws_iam_policy_document.api_ecr_repository.json
+}

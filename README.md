@@ -9,7 +9,7 @@ Monorepo with a SvelteKit frontend, FastAPI backend, Terraform for AWS, and Dock
 | `frontend/` | SvelteKit app (Svelte 5) |
 | `backend/` | FastAPI HTTP API |
 | `infra/terraform/` | AWS infrastructure (Terraform) |
-| `docker/` | Dockerfiles for building images used with Terraform / ECS |
+| `docker/` | Dockerfiles for building images used with Terraform / ECR |
 
 ## Prerequisites
 
@@ -67,8 +67,9 @@ Adjust ports in `docker/docker-compose.yml` if they conflict with local services
 
 ## Deployment (AWS)
 
-- Define and apply infrastructure in `infra/terraform/` (VPC, ECS/Fargate, ALB, ECR, etc., as you add modules).
-- Build and push images using `docker/Dockerfile.backend` and `docker/Dockerfile.frontend` with your registry and CI/CD pipeline.
+- Define and apply infrastructure in `infra/terraform/`.
+- The backend runs as a Lambda container image from ECR and is exposed through a Lambda Function URL with response streaming enabled.
+- The frontend is built as static SvelteKit assets and served from S3 + CloudFront.
 
 Details are added as the infrastructure code grows; see `infra/terraform/README.md`.
 

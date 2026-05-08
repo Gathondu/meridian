@@ -4,8 +4,8 @@
 aws_region   = "eu-central-1"
 project_name = "meridian"
 
-# Required for GitHub OIDC deploy role trust (format: owner/repo).
-github_repository = "your-org/meridian"
+# Optional local override. CI sets this to the pushed image tag.
+api_image_tag = "latest"
 
 # --- API runtime (see backend/.env.example) ---
 
@@ -22,12 +22,12 @@ log_json           = true
 rate_limit_default = "120/minute"
 request_id_header  = "X-Request-ID"
 
-openai_model    = "gpt-4o-mini"
-openai_base_url = ""
+openai_model    = "openai/gpt-4o-mini"
+openai_base_url = "https://openrouter.ai/api/v1"
 
 # GitHub deploy: set optional repo Variables TF_VAR_openai_model / TF_VAR_openai_base_url,
 # or Secrets OPENAI_MODEL / OPENAI_BASE_URL (same names as backend OPENAI_* env; secrets win).
 
-# Leave empty locally if you do not want Secrets Manager / App Runner injection.
+# Leave empty locally if you do not want Secrets Manager / Lambda injection.
 # In CI, set OPENAI_API_KEY from a GitHub Actions secret (maps to TF_VAR_openai_api_key).
 # openai_api_key = "sk-..."

@@ -13,6 +13,7 @@ from meridian_api.core.settings import Settings
 from meridian_api.repositories.chat_session_json import ChatSessionRepositoryError
 from meridian_api.repositories.chat_session_protocol import ChatSessionPersistence
 from meridian_api.schemas.chat_session import AuthRecord, ChatSessionRecord
+from meridian_api.services.openai_config import resolve_openai_api_key
 from meridian_api.services.chat_local_tool_definitions import (
     SUBMIT_DELEGATION_CREDENTIALS,
     SUBMIT_ORDER_CREDENTIALS,
@@ -51,14 +52,6 @@ _BOOTSTRAP_SYSTEM_PROMPT = (
     "with the exact email and PIN they provided. Do not invent credentials. "
     "Do not call other tools until sign-in succeeds."
 )
-
-
-def _openai_api_key(settings: Settings) -> str | None:
-    secret = settings.openai_api_key
-    if secret is None:
-        return None
-    value = secret.get_secret_value().strip()
-    return value or None
 
 
 def _openai_base_url(settings: Settings) -> str | None:
@@ -122,7 +115,7 @@ async def stream_chat_turn(
     repo: ChatSessionPersistence,
     request_id: str | None,
 ) -> AsyncIterator[dict[str, Any]]:
-    api_key = _openai_api_key(settings)
+    api_key = resolve_openai_api_key(settings)
     if not api_key:
         yield {"type": "error", "message": "OpenAI is not configured.", "ok": False}
         yield {"type": "finished", "ok": False}

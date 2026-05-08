@@ -113,6 +113,10 @@ class Settings(BaseSettings):
         default=None,
         description="OpenAI API key for chat completions (SSE). If unset, chat endpoints return 503.",
     )
+    openai_api_key_secret_arn: str | None = Field(
+        default=None,
+        description="Secrets Manager ARN containing OPENAI_API_KEY; used when OPENAI_API_KEY is unset.",
+    )
     openai_model: str = Field(
         default="gpt-4o-mini",
         description="Chat completions model for the assistant.",

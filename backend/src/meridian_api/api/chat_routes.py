@@ -15,6 +15,7 @@ from meridian_api.core.settings import get_settings
 from meridian_api.limiter import limiter
 from meridian_api.repositories.chat_session_json import ChatSessionRepositoryError
 from meridian_api.repositories.chat_session_resolve import chat_session_repository
+from meridian_api.services.openai_config import resolve_openai_api_key
 from meridian_api.services.chat_orchestrator import stream_chat_turn
 from meridian_api.services.mcp_gateway import McpGatewayService
 
@@ -117,8 +118,7 @@ async def stream_message(
     body: MessageBody,
 ) -> StreamingResponse:
     settings = _settings(request)
-    key = settings.openai_api_key
-    if key is None or not key.get_secret_value().strip():
+    if not resolve_openai_api_key(settings):
         raise HTTPException(status_code=503, detail="OpenAI is not configured.")
 
     repo = chat_session_repository(settings)

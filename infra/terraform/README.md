@@ -2,11 +2,11 @@
 
 This stack provisions:
 
-- **ECR** — container images for the FastAPI API (same image family ECS would pull; App Runner deploys from ECR).
-- **App Runner** — public HTTPS API with environment variables and secrets wired from Terraform variables (aligned with `backend/.env.example`).
+- **ECR** — container images for the FastAPI API.
+- **Lambda** — public HTTPS API from an ECR image through a Lambda Function URL with response streaming enabled.
 - **S3 + CloudFront** — static SvelteKit build (SPA fallback to `index.html`).
 - **S3 (private)** — chat session JSON objects (`CHAT_SESSIONS_S3_PREFIX`, default `sessions/`).
-- **IAM** — App Runner ECR pull role, instance role (S3 chat access), GitHub Actions OIDC deploy role.
+- **IAM** — Lambda execution role with CloudWatch logs, S3 chat access, and optional Secrets Manager read access.
 - **Secrets Manager** — optional `OPENAI_API_KEY` when `openai_api_key` is non-empty.
 
 Variable names mirror `TF_VAR_*` / `terraform.tfvars`; see `terraform.tfvars.example`.
@@ -19,9 +19,13 @@ Variable names mirror `TF_VAR_*` / `terraform.tfvars`; see `terraform.tfvars.exa
 
 ## Bootstrap (first time)
 
-1. Copy `terraform.tfvars.example` to `terraform.tfvars` and set `github_repository`, `mcp_server_url`, and other values.
-2. From this directory, run `terraform init` then `terraform apply` with AWS credentials that can create IAM (or apply in two phases via `.github/workflows/deploy-aws.yml`, which targets ECR first so a image exists before App Runner is created).
-3. After the first successful apply, copy `terraform output -raw github_actions_role_arn` into the GitHub repository secret **`AWS_DEPLOY_ROLE_ARN`**, and set **`MCP_SERVER_URL`**, optional **`MCP_SERVER_HEADERS_JSON`** (use `{}` if unused), and optional **`OPENAI_API_KEY`** to match your `tfvars`.
+1. Copy `terraform.tfvars.example` to `terraform.tfvars` and set `mcp_server_url`, OpenAI/OpenRouter values, and any optional CORS origins.
+2. From this directory, run `terraform init` then create ECR first with `terraform apply -auto-approve -target=aws_ecr_repository.api`.
+3. Build and push `docker/Dockerfile.backend` to the ECR repository output using the same `api_image_tag` you will apply.
+4. Run `terraform apply` to create the Lambda Function URL, S3, CloudFront, IAM, and secrets.
+5. For GitHub Actions, add repository secrets **`AWS_ACCESS_KEY_ID`**, **`AWS_SECRET_ACCESS_KEY`**, **`MCP_SERVER_URL`**, **`OPENAI_API_KEY`**, and optionally **`OPENAI_BASE_URL`** / **`OPENAI_MODEL`** for OpenRouter.
+
+For OpenRouter, set `OPENAI_BASE_URL=https://openrouter.ai/api/v1` and use an OpenRouter model id in `OPENAI_MODEL`.
 
 ## Getting started
 

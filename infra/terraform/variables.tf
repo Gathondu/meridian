@@ -6,19 +6,14 @@ variable "aws_region" {
 
 variable "project_name" {
   type        = string
-  description = "Short name prefix for buckets, roles, and App Runner service."
+  description = "Short name prefix for buckets, roles, and Lambda function."
   default     = "meridian"
 }
 
-variable "github_repository" {
+variable "api_image_tag" {
   type        = string
-  description = "GitHub repository allowed to assume the deploy role (format: owner/repo)."
-}
-
-variable "github_oidc_thumbprints" {
-  type        = list(string)
-  description = "TLS thumbprints for token.actions.githubusercontent.com (GitHub publishes updates periodically)."
-  default     = ["6938fd4d98bab03faadb97b34396831e3780aea1", "1c58a3a8518e8759bf075b76b750d4f2df264fcd"]
+  description = "ECR image tag deployed by the Lambda API function."
+  default     = "latest"
 }
 
 # --- Application env (mirror backend/.env.example; supply via tfvars or TF_VAR_*) ---
@@ -42,28 +37,28 @@ variable "cors_origins_extra" {
 }
 
 variable "log_level" {
-  type        = string
-  default     = "INFO"
+  type    = string
+  default = "INFO"
 }
 
 variable "log_json" {
-  type        = bool
-  default     = true
+  type    = bool
+  default = true
 }
 
 variable "rate_limit_default" {
-  type        = string
-  default     = "120/minute"
+  type    = string
+  default = "120/minute"
 }
 
 variable "request_id_header" {
-  type        = string
-  default     = "X-Request-ID"
+  type    = string
+  default = "X-Request-ID"
 }
 
 variable "openai_model" {
-  type        = string
-  default     = "gpt-4o-mini"
+  type    = string
+  default = "gpt-4o-mini"
 }
 
 variable "openai_base_url" {
@@ -74,7 +69,7 @@ variable "openai_base_url" {
 
 variable "openai_api_key" {
   type        = string
-  description = "OpenAI API key; stored in Secrets Manager and injected into App Runner (OPENAI_API_KEY). Use TF_VAR_openai_api_key in CI."
+  description = "OpenAI-compatible API key; stored in Secrets Manager and exposed to Lambda as OPENAI_API_KEY_SECRET_ARN. Use an OpenRouter key with OPENAI_BASE_URL=https://openrouter.ai/api/v1."
   default     = ""
   sensitive   = true
 }

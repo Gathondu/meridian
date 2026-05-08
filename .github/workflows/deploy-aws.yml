@@ -7,7 +7,6 @@ on:
       - main
 
 permissions:
-  id-token: write
   contents: read
 
 env:
@@ -16,7 +15,7 @@ env:
   TF_INPUT: "false"
   TF_VAR_aws_region: ${{ vars.AWS_REGION || 'eu-central-1' }}
   TF_VAR_project_name: ${{ vars.TF_VAR_project_name || 'meridian' }}
-  TF_VAR_github_repository: ${{ github.repository }}
+  TF_VAR_api_image_tag: ${{ github.sha }}
   TF_VAR_mcp_server_url: ${{ secrets.MCP_SERVER_URL }}
   TF_VAR_mcp_server_headers_json: ${{ secrets.MCP_SERVER_HEADERS_JSON }}
   TF_VAR_cors_origins_extra: ${{ vars.TF_VAR_cors_origins_extra }}
@@ -53,10 +52,12 @@ jobs:
           elif [ -n "$V_BASE" ]; then echo "TF_VAR_openai_base_url=$V_BASE" >> "$GITHUB_ENV"
           fi
 
-      - name: Configure AWS credentials (OIDC)
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Setup Terraform
@@ -80,7 +81,7 @@ jobs:
         run: |
           set -eux
           REPO_URL="$(terraform output -raw ecr_repository_url)"
-          docker build -f "${GITHUB_WORKSPACE}/docker/Dockerfile.backend" -t "${REPO_URL}:${IMAGE_TAG}" -t "${REPO_URL}:latest" "${GITHUB_WORKSPACE}"
+          docker build --platform linux/amd64 -f "${GITHUB_WORKSPACE}/docker/Dockerfile.backend" -t "${REPO_URL}:${IMAGE_TAG}" -t "${REPO_URL}:latest" "${GITHUB_WORKSPACE}"
           docker push "${REPO_URL}:${IMAGE_TAG}"
           docker push "${REPO_URL}:latest"
 
@@ -90,7 +91,7 @@ jobs:
       - name: Terraform outputs
         id: tfout
         run: |
-          echo "api_url=$(terraform output -raw app_runner_service_url)" >> "$GITHUB_OUTPUT"
+          echo "api_url=$(terraform output -raw api_base_url)" >> "$GITHUB_OUTPUT"
           echo "cf_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
           echo "web_bucket=$(terraform output -raw frontend_bucket_id)" >> "$GITHUB_OUTPUT"
 

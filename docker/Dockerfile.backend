@@ -2,12 +2,16 @@
 FROM python:3.12-slim-bookworm
 
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:1.0.0 /lambda-adapter /opt/extensions/lambda-adapter
 
 WORKDIR /app
 
 ENV UV_COMPILE_BYTECODE=1 \
 	UV_LINK_MODE=copy \
-	PATH="/app/.venv/bin:$PATH"
+	PATH="/app/.venv/bin:$PATH" \
+	AWS_LWA_PORT=8000 \
+	AWS_LWA_READINESS_CHECK_PATH=/health \
+	AWS_LWA_INVOKE_MODE=response_stream
 
 COPY backend/pyproject.toml backend/uv.lock ./
 COPY backend/src ./src

@@ -6,18 +6,13 @@ resource "aws_secretsmanager_secret_policy" "openai_api_key" {
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [{
-      Sid    = "AllowAppRunnerRead"
+      Sid    = "AllowLambdaRead"
       Effect = "Allow"
       Principal = {
-        Service = "apprunner.amazonaws.com"
+        AWS = aws_iam_role.lambda_execution.arn
       }
       Action   = "secretsmanager:GetSecretValue"
       Resource = aws_secretsmanager_secret.openai_api_key[0].arn
-      Condition = {
-        StringEquals = {
-          "aws:SourceAccount" = data.aws_caller_identity.current.account_id
-        }
-      }
     }]
   })
 }

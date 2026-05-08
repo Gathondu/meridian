@@ -3,9 +3,9 @@ output "ecr_repository_url" {
   value       = aws_ecr_repository.api.repository_url
 }
 
-output "app_runner_service_url" {
-  description = "Public HTTPS URL of the API (set PUBLIC_MERIDIAN_API_BASE_URL to this value for frontend builds)."
-  value       = aws_apprunner_service.api.service_url
+output "api_base_url" {
+  description = "Public Lambda Function URL of the API (set PUBLIC_MERIDIAN_API_BASE_URL to this value for frontend builds)."
+  value       = aws_lambda_function_url.api.function_url
 }
 
 output "cloudfront_domain_name" {
@@ -26,9 +26,4 @@ output "frontend_bucket_id" {
 output "chat_sessions_bucket_id" {
   description = "Private S3 bucket storing chat session JSON."
   value       = aws_s3_bucket.chat_sessions.id
-}
-
-output "github_actions_role_arn" {
-  description = "IAM role ARN for `aws-actions/configure-aws-credentials` (repository secret AWS_DEPLOY_ROLE_ARN)."
-  value       = aws_iam_role.github_actions_deploy.arn
 }
