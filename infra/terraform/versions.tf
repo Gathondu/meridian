@@ -8,9 +8,9 @@ terraform {
     }
   }
   backend "s3" {
-  bucket = "meridian-terraform-state-488255002567"
-  key    = "meridian/terraform.tfstate"
-  region = "eu-central-1"
-}
+    bucket = "meridian-terraform-state-488255002567"
+    key    = "meridian/terraform.tfstate"
+    region = "eu-central-1"
+  }
 
 }
