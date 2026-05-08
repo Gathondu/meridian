@@ -8,7 +8,9 @@ function apiBaseUrl(): string {
 			? import.meta.env.PUBLIC_MERIDIAN_API_BASE_URL.trim()
 			: '';
 	const base = raw.replace(/\/$/, '');
-	return base || 'http://127.0.0.1:8000';
+	if (base) return base;
+	if (import.meta.env.DEV) return 'http://127.0.0.1:8000';
+	throw new Error('PUBLIC_MERIDIAN_API_BASE_URL is required for production builds.');
 }
 
 export const load: PageLoad = async () => {

@@ -91,9 +91,15 @@ jobs:
       - name: Terraform outputs
         id: tfout
         run: |
-          echo "api_url=$(terraform output -raw api_base_url)" >> "$GITHUB_OUTPUT"
-          echo "cf_id=$(terraform output -raw cloudfront_distribution_id)" >> "$GITHUB_OUTPUT"
-          echo "web_bucket=$(terraform output -raw frontend_bucket_id)" >> "$GITHUB_OUTPUT"
+          api_url="$(terraform output -raw api_base_url)"
+          cf_id="$(terraform output -raw cloudfront_distribution_id)"
+          web_bucket="$(terraform output -raw frontend_bucket_id)"
+          test -n "$api_url"
+          test -n "$cf_id"
+          test -n "$web_bucket"
+          echo "api_url=$api_url" >> "$GITHUB_OUTPUT"
+          echo "cf_id=$cf_id" >> "$GITHUB_OUTPUT"
+          echo "web_bucket=$web_bucket" >> "$GITHUB_OUTPUT"
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -107,6 +113,7 @@ jobs:
         env:
           PUBLIC_MERIDIAN_API_BASE_URL: ${{ steps.tfout.outputs.api_url }}
         run: |
+          test -n "$PUBLIC_MERIDIAN_API_BASE_URL"
           npm ci
           npm run build
 

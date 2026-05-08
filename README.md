@@ -51,7 +51,7 @@ npm run dev
 
 Dev server defaults to `http://127.0.0.1:5173`.
 
-Copy [`frontend/.env.example`](./frontend/.env.example) to `frontend/.env` and set **`MERIDIAN_API_BASE_URL`** (server-only) to your API origin, for example `http://127.0.0.1:8000`, so the `/mcp` inspection page can reach the backend during `npm run dev`.
+Copy [`frontend/.env.example`](./frontend/.env.example) to `frontend/.env` and set **`PUBLIC_MERIDIAN_API_BASE_URL`** to your API origin, for example `http://127.0.0.1:8000`, so the frontend can reach the backend during `npm run dev`.
 
 The UI is served independently during development. For production-style hosting on AWS, use the Dockerfiles under `docker/` and the Terraform layout under `infra/terraform/`.
 
