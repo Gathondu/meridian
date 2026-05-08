@@ -10,9 +10,4 @@ locals {
     "https://${aws_cloudfront_distribution.frontend.domain_name}",
     trimspace(var.cors_origins_extra)
   ])))
-
-  lambda_function_url_cors_origins = compact(concat(
-    ["https://${aws_cloudfront_distribution.frontend.domain_name}"],
-    [for origin in split(",", var.cors_origins_extra) : trimspace(origin)]
-  ))
 }

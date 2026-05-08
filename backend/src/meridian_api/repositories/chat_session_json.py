@@ -90,10 +90,21 @@ class ChatSessionJsonRepository:
         logger.info("Created chat session %s role=%s", session_id, role)
         return record
 
-    def create_pending_session(self) -> ChatSessionRecord:
+    def create_pending_session(
+        self,
+        *,
+        user_session_id: str | None = None,
+        title: str | None = None,
+    ) -> ChatSessionRecord:
         """Create a session file before MCP verify (sign-in via chat tools)."""
         session_id = str(uuid.uuid4())
-        record = ChatSessionRecord(session_id=session_id, auth=None, openai_messages=[])
+        record = ChatSessionRecord(
+            session_id=session_id,
+            user_session_id=user_session_id,
+            title=title,
+            auth=None,
+            openai_messages=[],
+        )
         self._atomic_write(self._path(session_id), record.model_dump_for_disk())
         logger.info("Created pending chat session %s", session_id)
         return record
@@ -105,6 +116,21 @@ class ChatSessionJsonRepository:
             raise ChatSessionRepositoryError(msg)
         raw = json.loads(path.read_text(encoding="utf-8"))
         return ChatSessionRecord.model_validate(raw)
+
+    def list_sessions(self, *, user_session_id: str | None = None) -> list[ChatSessionRecord]:
+        if not self._root.is_dir():
+            return []
+
+        records: list[ChatSessionRecord] = []
+        for path in self._root.glob("*.json"):
+            try:
+                record = self.load(path.stem)
+            except (ChatSessionRepositoryError, json.JSONDecodeError, ValueError):
+                logger.warning("Skipping unreadable chat session file %s", path)
+                continue
+            if user_session_id is None or record.user_session_id == user_session_id:
+                records.append(record)
+        return records
 
     def save(self, record: ChatSessionRecord) -> None:
         self._atomic_write(self._path(record.session_id), record.model_dump_for_disk())

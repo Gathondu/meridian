@@ -64,9 +64,20 @@ class ChatSessionS3Repository:
         raw = obj["Body"].read()
         return json.loads(raw.decode("utf-8"))
 
-    def create_pending_session(self) -> ChatSessionRecord:
+    def create_pending_session(
+        self,
+        *,
+        user_session_id: str | None = None,
+        title: str | None = None,
+    ) -> ChatSessionRecord:
         session_id = str(uuid.uuid4())
-        record = ChatSessionRecord(session_id=session_id, auth=None, openai_messages=[])
+        record = ChatSessionRecord(
+            session_id=session_id,
+            user_session_id=user_session_id,
+            title=title,
+            auth=None,
+            openai_messages=[],
+        )
         self._put_json(session_id, record.model_dump_for_disk())
         logger.info("Created pending chat session %s (S3)", session_id)
         return record
@@ -74,6 +85,27 @@ class ChatSessionS3Repository:
     def load(self, session_id: str) -> ChatSessionRecord:
         raw = self._get_json(session_id)
         return ChatSessionRecord.model_validate(raw)
+
+    def list_sessions(self, *, user_session_id: str | None = None) -> list[ChatSessionRecord]:
+        prefix = f"{self._prefix}/" if self._prefix else ""
+        records: list[ChatSessionRecord] = []
+        paginator = self._client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=self._bucket, Prefix=prefix):
+            for item in page.get("Contents", []):
+                key = str(item.get("Key", ""))
+                if not key.endswith(".json"):
+                    continue
+                session_id = key.removeprefix(prefix).removesuffix(".json")
+                if "/" in session_id or not session_id:
+                    continue
+                try:
+                    record = self.load(session_id)
+                except (ChatSessionRepositoryError, json.JSONDecodeError, ValueError):
+                    logger.warning("Skipping unreadable chat session object %s", key)
+                    continue
+                if user_session_id is None or record.user_session_id == user_session_id:
+                    records.append(record)
+        return records
 
     def save(self, record: ChatSessionRecord) -> None:
         self._put_json(record.session_id, record.model_dump_for_disk())

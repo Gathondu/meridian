@@ -4,16 +4,21 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import AsyncIterator
-from typing import Any
+from typing import Any, cast
 
 from openai import AsyncOpenAI
+from openai.types.chat import ChatCompletionMessageParam, ChatCompletionToolParam
 
 from meridian_api.core.settings import Settings
 from meridian_api.repositories.chat_session_json import ChatSessionRepositoryError
 from meridian_api.repositories.chat_session_protocol import ChatSessionPersistence
-from meridian_api.schemas.chat_session import AuthRecord, ChatSessionRecord
-from meridian_api.services.openai_config import resolve_openai_api_key
+from meridian_api.schemas.chat_session import (
+    AuthRecord,
+    ChatSessionRecord,
+    DelegationRecord,
+)
 from meridian_api.services.chat_local_tool_definitions import (
     SUBMIT_DELEGATION_CREDENTIALS,
     SUBMIT_ORDER_CREDENTIALS,
@@ -29,15 +34,18 @@ from meridian_api.services.chat_tool_policy import (
 from meridian_api.services.mcp_gateway import McpGatewayService
 from meridian_api.services.mcp_text_parsers import (
     extract_customer_id_from_verify_text,
+    extract_price_from_product_text,
     extract_role_from_verify_text,
     structured_to_assistant_visible_text,
     tool_result_to_text,
 )
+from meridian_api.services.openai_config import resolve_openai_api_key
 from meridian_api.services.openai_tool_definitions import order_tool_definitions
 
 logger = logging.getLogger(__name__)
 
 _MAX_AGENT_ROUNDS = 12
+_ORDER_ITEM_RE = re.compile(r"\b([A-Z]{3}-\d{4})\b\s*(?:x|X|qty\s*)\s*(\d+)\b")
 
 _SYSTEM_PROMPT = (
     "You are Meridian, an order assistant backed by tools. "
@@ -72,11 +80,97 @@ def _delegation_from_record(record: ChatSessionRecord) -> DelegationContext | No
     )
 
 
+def _extract_order_items(text: str) -> list[dict[str, Any]]:
+    items: dict[str, int] = {}
+    for sku, qty_raw in _ORDER_ITEM_RE.findall(text):
+        qty = int(qty_raw)
+        if qty < 1:
+            continue
+        sku = sku.upper()
+        items[sku] = items.get(sku, 0) + qty
+    return [{"sku": sku, "quantity": qty} for sku, qty in items.items()]
+
+
+def _coerce_order_quantity(value: Any) -> int:
+    try:
+        quantity = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ToolPolicyError("Order item quantity must be a positive integer.") from exc
+    if quantity < 1:
+        raise ToolPolicyError("Order item quantity must be a positive integer.")
+    return quantity
+
+
+async def _prepare_create_order_args(
+    args: dict[str, Any],
+    *,
+    gateway: McpGatewayService,
+    request_id: str | None,
+) -> dict[str, Any]:
+    items = args.get("items")
+    if not isinstance(items, list) or not items:
+        raise ToolPolicyError("items are required for create_order")
+
+    prepared_items: list[dict[str, Any]] = []
+    for raw_item in items:
+        if not isinstance(raw_item, dict):
+            raise ToolPolicyError("Each order item must be an object.")
+        sku = str(raw_item.get("sku", "")).strip().upper()
+        if not sku:
+            raise ToolPolicyError("Each order item needs a sku.")
+        quantity = _coerce_order_quantity(raw_item.get("quantity", 1))
+        unit_price = raw_item.get("unit_price") or raw_item.get("price")
+        currency = str(raw_item.get("currency") or "USD").strip().upper()
+
+        if unit_price is None or str(unit_price).strip() == "":
+            product_payload = await gateway.call_tool("get_product", {"sku": sku}, request_id)
+            if product_payload.get("mcp_is_error"):
+                detail = structured_to_assistant_visible_text(product_payload)
+                raise ToolPolicyError(f"Could not load price for {sku}: {detail}")
+            parsed_price = extract_price_from_product_text(tool_result_to_text(product_payload))
+            if parsed_price is None:
+                raise ToolPolicyError(f"Could not find unit price for {sku}.")
+            unit_price, currency = parsed_price
+
+        prepared_items.append(
+            {
+                **raw_item,
+                "sku": sku,
+                "quantity": quantity,
+                "unit_price": str(unit_price).strip().replace("$", ""),
+                "currency": currency or "USD",
+            }
+        )
+
+    return {**args, "items": prepared_items}
+
+
 def _system_content_for_record(record: ChatSessionRecord) -> str:
     if record.auth is None:
         return _BOOTSTRAP_SYSTEM_PROMPT
     base = _SYSTEM_PROMPT
+    base += (
+        f" Signed-in actor: {record.auth.actor_email}; role: {record.auth.role}; "
+        f"actor customer UUID: {record.auth.actor_customer_id}."
+    )
     role = record.auth.role.lower()
+    if record.delegation is not None:
+        base += (
+            f" Active customer context: {record.delegation.delegated_email}; "
+            f"customer UUID: {record.delegation.delegated_customer_id}. "
+            "When creating orders, use this active customer context; do not ask the user for a UUID."
+        )
+    elif role == "buyer":
+        base += (
+            " Active customer context is the signed-in buyer. When creating orders or listing "
+            "customer-scoped orders, use the actor customer UUID; do not ask the user for a UUID."
+        )
+    if record.pending_order_items:
+        base += (
+            " Pending order items remembered from this chat: "
+            f"{json.dumps(record.pending_order_items, ensure_ascii=False)}. "
+            "If the user confirms placing the order, call create_order with these items."
+        )
     if role in ("support", "admin") and record.delegation is None:
         base += (
             " This user is staff. Before using customer-scoped or order tools, ask the buyer for "
@@ -86,7 +180,10 @@ def _system_content_for_record(record: ChatSessionRecord) -> str:
     return base
 
 
-def _messages_with_system(messages: list[dict[str, Any]], record: ChatSessionRecord) -> list[dict[str, Any]]:
+def _messages_with_system(
+    messages: list[dict[str, Any]],
+    record: ChatSessionRecord,
+) -> list[dict[str, Any]]:
     want = _system_content_for_record(record)
     if not messages:
         return [{"role": "system", "content": want}]
@@ -97,13 +194,13 @@ def _messages_with_system(messages: list[dict[str, Any]], record: ChatSessionRec
     return [{"role": "system", "content": want}, *messages]
 
 
-def _openai_tools(record: ChatSessionRecord) -> list[dict[str, Any]]:
+def _openai_tools(record: ChatSessionRecord) -> list[ChatCompletionToolParam]:
     if record.auth is None:
-        return [submit_order_credentials_tool()]
+        return cast(list[ChatCompletionToolParam], [submit_order_credentials_tool()])
     tools: list[dict[str, Any]] = list(order_tool_definitions())
     if record.delegation is None and record.auth.role.lower() in ("support", "admin"):
         tools.append(submit_delegation_credentials_tool())
-    return tools
+    return cast(list[ChatCompletionToolParam], tools)
 
 
 async def stream_chat_turn(
@@ -121,8 +218,14 @@ async def stream_chat_turn(
         yield {"type": "finished", "ok": False}
         return
 
+    user_text_clean = user_text.strip()
+    user_items = _extract_order_items(user_text_clean)
+    if user_items:
+        record.pending_order_items = user_items
+        repo.save(record)
+
     messages = _messages_with_system(list(record.openai_messages), record)
-    messages.append({"role": "user", "content": user_text.strip()})
+    messages.append({"role": "user", "content": user_text_clean})
 
     client_kwargs: dict[str, Any] = {"api_key": api_key}
     base_url = _openai_base_url(settings)
@@ -140,7 +243,7 @@ async def stream_chat_turn(
 
             stream = await client.chat.completions.create(
                 model=model,
-                messages=messages,
+                messages=cast(list[ChatCompletionMessageParam], messages),
                 tools=tools,
                 stream=True,
                 parallel_tool_calls=True,
@@ -244,6 +347,9 @@ async def stream_chat_turn(
                             }
                         )
                         continue
+
+                    if name == "create_order" and not parsed.get("items") and record.pending_order_items:
+                        parsed = {**parsed, "items": record.pending_order_items}
 
                     if name == SUBMIT_ORDER_CREDENTIALS:
                         if record.auth is not None:
@@ -470,9 +576,37 @@ async def stream_chat_turn(
                             tool_name=name,
                             raw_arguments=parsed,
                         )
+                        if name == "create_order":
+                            safe_args = await _prepare_create_order_args(
+                                safe_args,
+                                gateway=gateway,
+                                request_id=request_id,
+                            )
                         payload = await gateway.call_tool(name, safe_args, request_id)
                         visible = structured_to_assistant_visible_text(payload)
                         ok = not bool(payload.get("mcp_is_error"))
+                        if ok and name == "create_order":
+                            record.pending_order_items = []
+                            repo.save(record)
+                        if ok and name == "verify_customer_pin":
+                            cid = extract_customer_id_from_verify_text(visible)
+                            target_role = extract_role_from_verify_text(visible)
+                            email = str(parsed.get("email", "")).strip().lower()
+                            if (
+                                cid
+                                and target_role == "buyer"
+                                and record.auth.role.lower() in ("support", "admin")
+                            ):
+                                record.delegation = DelegationRecord(
+                                    delegated_customer_id=cid,
+                                    delegated_email=email,
+                                )
+                                repo.save(record)
+                                if messages and messages[0].get("role") == "system":
+                                    messages[0] = {
+                                        "role": "system",
+                                        "content": _system_content_for_record(record),
+                                    }
                         yield {
                             "type": "tool_call_done",
                             "name": name,
@@ -524,6 +658,9 @@ async def stream_chat_turn(
                 continue
 
             messages.append({"role": "assistant", "content": assistant_text})
+            assistant_items = _extract_order_items(assistant_text)
+            if assistant_items:
+                record.pending_order_items = assistant_items
             break
 
         record.openai_messages = messages

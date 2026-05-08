@@ -11,6 +11,7 @@ _UUID_RE = re.compile(
     re.IGNORECASE,
 )
 _ROLE_RE = re.compile(r"Role:\s*(\S+)", re.IGNORECASE)
+_PRICE_RE = re.compile(r"Price:\s*\$?([0-9]+(?:\.[0-9]+)?)\s*([A-Z]{3})?", re.IGNORECASE)
 
 
 def extract_customer_id_from_verify_text(text: str) -> str | None:
@@ -21,6 +22,14 @@ def extract_customer_id_from_verify_text(text: str) -> str | None:
 def extract_role_from_verify_text(text: str) -> str | None:
     m = _ROLE_RE.search(text)
     return m.group(1).strip().lower() if m else None
+
+
+def extract_price_from_product_text(text: str) -> tuple[str, str] | None:
+    m = _PRICE_RE.search(text)
+    if not m:
+        return None
+    currency = (m.group(2) or "USD").upper()
+    return m.group(1), currency
 
 
 def tool_result_to_text(payload: dict[str, Any]) -> str:

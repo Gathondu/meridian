@@ -42,15 +42,6 @@ resource "aws_lambda_function_url" "api" {
   function_name      = aws_lambda_function.api.function_name
   authorization_type = "NONE"
   invoke_mode        = "RESPONSE_STREAM"
-
-  cors {
-    allow_credentials = false
-    allow_headers     = ["*"]
-    allow_methods     = ["GET", "HEAD", "POST"]
-    allow_origins     = local.lambda_function_url_cors_origins
-    expose_headers    = [var.request_id_header]
-    max_age           = 300
-  }
 }
 
 resource "aws_lambda_permission" "api_function_url_public" {

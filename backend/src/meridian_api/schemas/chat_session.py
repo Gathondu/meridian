@@ -24,8 +24,11 @@ class ChatSessionRecord(BaseModel):
     created_at: str = Field(
         default_factory=lambda: datetime.now(tz=UTC).isoformat(),
     )
+    user_session_id: str | None = None
+    title: str | None = None
     auth: AuthRecord | None = None
     delegation: DelegationRecord | None = None
+    pending_order_items: list[dict[str, Any]] = Field(default_factory=list)
     openai_messages: list[dict[str, Any]] = Field(default_factory=list)
 
     def model_dump_for_disk(self) -> dict[str, Any]:

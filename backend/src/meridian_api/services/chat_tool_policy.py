@@ -35,6 +35,23 @@ def _norm_uuid(value: str) -> str:
     return value.strip().lower()
 
 
+def _without_empty_values(args: dict[str, Any]) -> dict[str, Any]:
+    return {key: value for key, value in args.items() if value != ""}
+
+
+def _is_context_placeholder(value: Any) -> bool:
+    raw = str(value).strip().lower()
+    return raw in {
+        "",
+        "current_user",
+        "current_customer",
+        "active_customer",
+        "active_customer_id",
+        "me",
+        "self",
+    }
+
+
 def effective_customer_id(
     auth: ChatAuthContext,
     delegation: DelegationContext | None,
@@ -119,11 +136,12 @@ def validate_tool_call(
 
     if tool_name in ("list_orders", "get_order"):
         if tool_name == "list_orders":
-            if role_l == "admin":
+            args = _without_empty_values(args)
+            if role_l == "admin" and delegation is None:
                 return args
             eff = effective_customer_id(auth, delegation)
             raw_c = args.get("customer_id")
-            if raw_c is None or raw_c == "":
+            if raw_c is None or _is_context_placeholder(raw_c):
                 args = {**args, "customer_id": eff}
             else:
                 cid = _norm_uuid(str(raw_c))
@@ -133,8 +151,9 @@ def validate_tool_call(
 
     if tool_name == "create_order":
         cid = _norm_uuid(str(args.get("customer_id", "")))
-        if not cid:
-            raise ToolPolicyError("customer_id is required")
+        if _is_context_placeholder(args.get("customer_id", "")):
+            cid = effective_customer_id(auth, delegation)
+            args = {**args, "customer_id": cid}
         if role_l == "buyer":
             if cid != _norm_uuid(auth.actor_customer_id):
                 raise ToolPolicyError("Buyers may only create orders for themselves.")

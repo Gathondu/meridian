@@ -15,6 +15,7 @@ from meridian_api.core.settings import get_settings
 from meridian_api.limiter import limiter
 from meridian_api.repositories.chat_session_json import ChatSessionRepositoryError
 from meridian_api.repositories.chat_session_resolve import chat_session_repository
+from meridian_api.schemas.chat_session import ChatSessionRecord
 from meridian_api.services.openai_config import resolve_openai_api_key
 from meridian_api.services.chat_orchestrator import stream_chat_turn
 from meridian_api.services.mcp_gateway import McpGatewayService
@@ -45,8 +46,41 @@ def _sse_data_line(obj: dict[str, object]) -> str:
     return f"data: {json.dumps(obj, ensure_ascii=True)}\n\n"
 
 
+def _visible_messages(record: ChatSessionRecord) -> list["SessionMessage"]:
+    messages: list[SessionMessage] = []
+    for row in record.openai_messages:
+        role = row.get("role")
+        if role not in ("user", "assistant"):
+            continue
+        content = row.get("content")
+        if not isinstance(content, str) or not content.strip():
+            continue
+        messages.append(
+            SessionMessage(
+                role=role,
+                content=content,
+                timestamp=record.created_at,
+            )
+        )
+    return messages
+
+
 class CreateSessionResponse(BaseModel):
     session_id: str
+
+
+class SessionMessage(BaseModel):
+    role: str
+    content: str
+    timestamp: str
+
+
+class SessionResponse(BaseModel):
+    session_id: str
+    created_at: str
+    user_session_id: str | None = None
+    title: str | None = None
+    messages: list[SessionMessage]
 
 
 class DelegateBody(BaseModel):
@@ -60,8 +94,51 @@ class DelegateResponse(BaseModel):
     delegated_email: str
 
 
+class ChatListResponse(BaseModel):
+    chats: list[SessionResponse]
+
+
+class UpdateTitleRequest(BaseModel):
+    title: str = Field(..., min_length=1, max_length=200)
+
+
+class CreateSessionWithUserRequest(BaseModel):
+    user_session_id: str | None = None
+    title: str | None = None
+
+
 class MessageBody(BaseModel):
     text: str = Field(..., min_length=1, max_length=16000)
+
+
+def _session_response(record: ChatSessionRecord) -> SessionResponse:
+    return SessionResponse(
+        session_id=record.session_id,
+        created_at=record.created_at,
+        user_session_id=record.user_session_id,
+        title=record.title,
+        messages=_visible_messages(record),
+    )
+
+
+def _update_session_title(request: Request, session_id: str, title: str) -> SessionResponse:
+    settings = _settings(request)
+    repo = chat_session_repository(settings)
+
+    try:
+        record = repo.load(session_id)
+    except ChatSessionRepositoryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    clean_title = title.strip()
+    if not clean_title:
+        raise HTTPException(status_code=422, detail="Title cannot be empty.")
+    if len(clean_title) > 200:
+        raise HTTPException(status_code=422, detail="Title must be 200 characters or fewer.")
+
+    record.title = clean_title
+    repo.save(record)
+    return _session_response(record)
 
 
 @limiter.limit(_rate_limit_string)
@@ -69,8 +146,20 @@ class MessageBody(BaseModel):
 async def create_session(request: Request) -> CreateSessionResponse:
     settings = _settings(request)
     repo = chat_session_repository(settings)
-    record = repo.create_pending_session()
+    record = repo.create_pending_session()  # Backward compatible call
     return CreateSessionResponse(session_id=record.session_id)
+
+
+@limiter.limit(_rate_limit_string)
+@router.get("/sessions/{session_id}", response_model=SessionResponse)
+async def get_session(request: Request, session_id: str) -> SessionResponse:
+    settings = _settings(request)
+    repo = chat_session_repository(settings)
+    try:
+        record = repo.load(session_id)
+    except ChatSessionRepositoryError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _session_response(record)
 
 
 @limiter.limit(_rate_limit_string)
@@ -147,3 +236,64 @@ async def stream_message(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@limiter.limit(_rate_limit_string)
+@router.get("/chats", response_model=ChatListResponse)
+async def list_chats(request: Request, user_session_id: str | None = None) -> ChatListResponse:
+    """List chats, optionally filtered by user_session_id."""
+    settings = _settings(request)
+    repo = chat_session_repository(settings)
+
+    chats = [
+        SessionResponse(
+            session_id=record.session_id,
+            created_at=record.created_at,
+            user_session_id=record.user_session_id,
+            title=record.title,
+            messages=_visible_messages(record),
+        )
+        for record in repo.list_sessions(user_session_id=user_session_id)
+    ]
+
+    # Sort by created_at descending (newest first)
+    chats.sort(key=lambda x: x.created_at, reverse=True)
+    return ChatListResponse(chats=chats)
+
+
+@limiter.limit(_rate_limit_string)
+@router.put("/chats/{session_id}/title", response_model=SessionResponse)
+async def update_chat_title(
+    request: Request,
+    session_id: str,
+    body: UpdateTitleRequest,
+) -> SessionResponse:
+    """Update the title of a chat session."""
+    return _update_session_title(request, session_id, body.title)
+
+
+@limiter.limit(_rate_limit_string)
+@router.post("/chats/{session_id}/title", response_model=SessionResponse)
+async def update_chat_title_text(
+    request: Request,
+    session_id: str,
+) -> SessionResponse:
+    """Update the title of a chat session with a simple text body."""
+    body = await request.body()
+    return _update_session_title(request, session_id, body.decode("utf-8"))
+
+
+@limiter.limit(_rate_limit_string)
+@router.post("/chats", response_model=CreateSessionResponse)
+async def create_chat_with_user(
+    request: Request,
+    body: CreateSessionWithUserRequest,
+) -> CreateSessionResponse:
+    """Create a new chat session with optional user_session_id and title."""
+    settings = _settings(request)
+    repo = chat_session_repository(settings)
+    record = repo.create_pending_session(
+        user_session_id=body.user_session_id,
+        title=body.title,
+    )
+    return CreateSessionResponse(session_id=record.session_id)

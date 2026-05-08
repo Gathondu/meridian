@@ -11,9 +11,16 @@ from meridian_api.services.mcp_gateway import McpGatewayService
 class ChatSessionPersistence(Protocol):
     """File or object storage for chat session JSON."""
 
-    def create_pending_session(self) -> ChatSessionRecord: ...
+    def create_pending_session(
+        self,
+        *,
+        user_session_id: str | None = None,
+        title: str | None = None,
+    ) -> ChatSessionRecord: ...
 
     def load(self, session_id: str) -> ChatSessionRecord: ...
+
+    def list_sessions(self, *, user_session_id: str | None = None) -> list[ChatSessionRecord]: ...
 
     def save(self, record: ChatSessionRecord) -> None: ...
 

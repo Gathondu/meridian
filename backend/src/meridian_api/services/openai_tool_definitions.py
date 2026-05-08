@@ -109,17 +109,39 @@ _ORDER_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "create_order",
-            "description": "Create an order for a customer with line items.",
+            "description": (
+                "Create an order with line items. Omit customer_id to use the active verified "
+                "customer stored in the current chat session."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "customer_id": {"type": "string"},
+                    "customer_id": {
+                        "type": "string",
+                        "description": "Optional customer UUID; defaults to the active verified customer.",
+                    },
                     "items": {
                         "type": "array",
-                        "items": {"type": "object", "additionalProperties": True},
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "sku": {"type": "string"},
+                                "quantity": {"type": "integer", "minimum": 1},
+                                "unit_price": {
+                                    "type": "string",
+                                    "description": "Optional. Backend fills current product price when omitted.",
+                                },
+                                "currency": {
+                                    "type": "string",
+                                    "description": "Optional. Defaults to USD.",
+                                },
+                            },
+                            "required": ["sku", "quantity"],
+                            "additionalProperties": True,
+                        },
                     },
                 },
-                "required": ["customer_id", "items"],
+                "required": ["items"],
             },
         },
     },

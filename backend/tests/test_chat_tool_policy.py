@@ -82,6 +82,29 @@ def test_support_list_orders_with_delegation_injects_customer_id() -> None:
     assert out["customer_id"] == "dddddddd-dddd-dddd-dddd-dddddddddddd"
 
 
+def test_admin_list_orders_with_blank_customer_id_and_delegation_injects_customer_id() -> None:
+    out = validate_tool_call(
+        auth=_admin(),
+        delegation=_delegation(),
+        tool_name="list_orders",
+        raw_arguments={"customer_id": "", "status": "open"},
+    )
+    assert out == {
+        "customer_id": "dddddddd-dddd-dddd-dddd-dddddddddddd",
+        "status": "open",
+    }
+
+
+def test_admin_list_orders_without_delegation_strips_blank_customer_id() -> None:
+    out = validate_tool_call(
+        auth=_admin(),
+        delegation=None,
+        tool_name="list_orders",
+        raw_arguments={"customer_id": "", "status": "open"},
+    )
+    assert out == {"status": "open"}
+
+
 def test_admin_list_orders_passes_filters() -> None:
     out = validate_tool_call(
         auth=_admin(),
@@ -90,3 +113,56 @@ def test_admin_list_orders_passes_filters() -> None:
         raw_arguments={"status": "pending"},
     )
     assert out["status"] == "pending"
+
+
+def test_buyer_create_order_injects_actor_customer_id() -> None:
+    out = validate_tool_call(
+        auth=_buyer(),
+        delegation=None,
+        tool_name="create_order",
+        raw_arguments={"items": [{"sku": "ACC-0132", "quantity": 1}]},
+    )
+    assert out["customer_id"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+    assert out["items"] == [{"sku": "ACC-0132", "quantity": 1}]
+
+
+def test_buyer_create_order_replaces_current_user_placeholder() -> None:
+    out = validate_tool_call(
+        auth=_buyer(),
+        delegation=None,
+        tool_name="create_order",
+        raw_arguments={"customer_id": "CURRENT_USER", "items": [{"sku": "ACC-0132", "quantity": 1}]},
+    )
+    assert out["customer_id"] == "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
+
+
+def test_support_create_order_injects_delegated_customer_id() -> None:
+    out = validate_tool_call(
+        auth=_support(),
+        delegation=_delegation(),
+        tool_name="create_order",
+        raw_arguments={"customer_id": "", "items": [{"sku": "ACC-0132", "quantity": 1}]},
+    )
+    assert out["customer_id"] == "dddddddd-dddd-dddd-dddd-dddddddddddd"
+
+
+def test_support_list_orders_replaces_active_customer_placeholder() -> None:
+    out = validate_tool_call(
+        auth=_support(),
+        delegation=_delegation(),
+        tool_name="list_orders",
+        raw_arguments={"customer_id": "active_customer", "status": "submitted"},
+    )
+    assert out["customer_id"] == "dddddddd-dddd-dddd-dddd-dddddddddddd"
+    assert out["status"] == "submitted"
+
+
+def test_support_create_order_without_delegation_fails() -> None:
+    with pytest.raises(ToolPolicyError) as exc:
+        validate_tool_call(
+            auth=_support(),
+            delegation=None,
+            tool_name="create_order",
+            raw_arguments={"items": [{"sku": "ACC-0132", "quantity": 1}]},
+        )
+    assert exc.value.code == "delegation_required"
